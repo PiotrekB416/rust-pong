@@ -2,13 +2,14 @@
 use std::{usize, ops::Deref};
 
 // import the prelude to get access to the `rsx!` macro and the `Scope` and `Element` types
-use dioxus::{core::exports::bumpalo::format, html::{geometry::euclid::{num::Round, Trig}, option, select, GlobalAttributes}, prelude::*};
+use dioxus::{html::{geometry::euclid::{num::Round, Trig}, option, select, GlobalAttributes}, prelude::*};
 use rand::Rng;
 use wasm_bindgen::prelude::*;
 
+#[derive(Clone)]
 struct Ball {
-    x: usize,
-    y: usize,
+    pub x: usize,
+    pub y: usize,
     angle: usize,
     speed: usize,
 }
@@ -16,16 +17,18 @@ struct Ball {
 impl Ball {
     fn new() -> Self {
         let mut rng = rand::thread_rng();
-        Self { x: 2950, y: 3950, angle: (rng.gen::<f64>().round() as usize * 80 + 50) * (rng.gen::<f64>().round() as usize * 2 - 1), speed: 3}
+        Self { x: 2950, y: 3950, angle: (rng.gen::<f64>().round() as usize * 80 + 50) * (rng.gen::<f64>().round() as usize * 3), speed: 1}
     }
 
     fn next(&mut self) {
         let mut t: f64 = (self.angle as f64).to_radians().tan();
 
         if t < 1.0 {
-
+            self.y += (self.speed as f64 / t) as usize;
+            self.x += self.speed;
         } else {
-
+            self.y += self.speed;
+            self.x += (self.speed as f64 / t) as usize;
         }
 
     }
@@ -39,14 +42,12 @@ extern "C" {
 
 fn main() {
     // launch the web app
-    console_log(format!("{}",))
-
     dioxus_web::launch(App);
 }
 
 fn get_context(context_type: String) -> web_sys::CanvasRenderingContext2d {
     let document = web_sys::window().unwrap_throw().document().unwrap_throw();
-    let canvas = document.get_element_by_id("canvas").unwrap_throw();
+    let canvas = document.get_element_by_id("gamecanvas").unwrap_throw();
     let canvas: web_sys::HtmlCanvasElement = canvas
         .dyn_into::<web_sys::HtmlCanvasElement>()
         .map_err(|_| ())
@@ -62,7 +63,7 @@ fn move_player(id: usize, direction: bool) {
 fn App(cx: Scope) -> Element {
 
     let players = use_state(cx, || vec![false, true]);
-    let ball = use_state(cx, Ball::new);
+    let ball = use_ref(cx, Ball::new);
 
     let player = |id: usize, player: bool| rsx!( div {
             id: "player{id}",
@@ -108,10 +109,22 @@ fn App(cx: Scope) -> Element {
         closure.forget();
     }
     {
-        let closure = Closure::<dyn FnMut()>::new(|| {
+        let ball_clone = ball.clone();
+        let closure = Closure::<dyn FnMut()>::new(move || {
             //console_log("call");
+            let (x, y) = ( ball_clone.read().x, ball_clone.read().y );
+            let mut ball = ball_clone.read().deref().clone();
+            ball.next();
+            ball_clone.with_mut(|_| ball);
+
+            let context = get_context("2d".to_string());
+
+            context.begin_path();
+            context.arc(x as f64, y as f64, 10.0, 0.0, std::f64::consts::TAU).unwrap_throw();
+            context.close_path();
+
         });
-        window.set_interval_with_callback_and_timeout_and_arguments_0(closure.as_ref().unchecked_ref(), 1).unwrap_throw();
+        window.set_interval_with_callback_and_timeout_and_arguments_0(closure.as_ref().unchecked_ref(), 100).unwrap_throw();
         closure.forget();
     }
 
