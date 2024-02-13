@@ -5,6 +5,7 @@ use std::{isize, ops::Deref, usize};
 use dioxus::{html::{geometry::euclid::{num::Round, Trig}, option, select, GlobalAttributes}, prelude::*};
 use rand::Rng;
 use wasm_bindgen::{closure, prelude::*};
+use web_sys::js_sys::Function;
 
 #[derive(Clone, Debug)]
 struct Ball {
@@ -12,14 +13,15 @@ struct Ball {
     pub y: isize,
     angle: usize,
     speed: usize,
-    inverted: bool
+    inverted: (bool, bool),
+    game_over: fn (),
 }
 
 impl Ball {
-    fn new() -> Self {
+    fn new(game_over: fn()) -> Self {
         let mut rng = rand::thread_rng();
         Self { x: 3850, y: 2850, angle: (rng.gen::<f64>().round() as usize * 80 + 50) * (rng.gen::<f64>().round() as usize * 3 + 1),
-            speed: 10, inverted: rng.gen()}
+            speed: 30, inverted: (rng.gen(), rng.gen()), game_over}
     }
 
     fn next(&mut self) {
@@ -27,36 +29,90 @@ impl Ball {
 
         console_log(format!("{}", t).as_str());
 
-        let mult = if self.inverted {-1} else {1};
+        let mult_x = if self.inverted.0 {-1} else {1};
+        let mult_y = if self.inverted.1 {-1} else {1};
+
 
         if t < 1.0 {
-            self.y += self.speed as isize * mult;
-            self.x += (self.speed as f64 * t).ceil() as isize * mult;
+            self.y += self.speed as isize * mult_y;
+            self.x += (self.speed as f64 * t).ceil() as isize * mult_x;
         } else {
-            self.x += self.speed as isize * mult;
-            self.y += (self.speed as f64 * t).ceil() as isize * mult;
+            self.x += self.speed as isize * mult_x;
+            self.y += (self.speed as f64 * t).ceil() as isize * mult_y;
         }
 
-        let mut invert = false;
+        let mut invert = (false, false);
 
-        if self.x < 0 {
-            invert = true;
-            self.x = self.x.abs();
+        if self.x < 150 {
+            invert.0 = true;
+            self.x = 300 - self.x;
         }
 
-        if self.y < 0 {
-            invert = true;
-            self.y = self.y.abs();
+        if self.x > 7850 {
+            invert.0 = true;
+            self.x = 7850 - (self.x - 7850);
         }
 
-        if invert {
-            self.invert();
+        if self.y < 150 {
+            invert.1 = true;
+            self.y = 300 - self.y;
+        }
+
+        if self.y > 5850 {
+            invert.1 = true;
+            self.y = 5850 - (self.y - 5850);
+        }
+
+        if invert.0 {
+            console_log("invert x");
+            self.invert_x();
+        }
+
+        if invert.1 {
+            console_log("invert y");
+            self.invert_y();
         }
 
     }
 
-    fn invert(&mut self) {
-        self.inverted = !self.inverted;
+    fn invert_y(&mut self) {
+        self.inverted.1 = !self.inverted.1;
+    }
+
+    fn invert_x(&mut self) {
+        self.inverted.0 = !self.inverted.0;
+    }
+}
+
+struct Funcs<'a> {
+    intervals: Vec<i32>,
+    events: Vec<&'a Function>
+}
+
+impl<'a> Funcs<'a> {
+    pub fn new() -> Self {
+        Self {intervals: Vec::new(), events: Vec::new()}
+    }
+
+    pub fn len(&self) -> usize {
+        self.intervals.len() +
+        self.events.len()
+    }
+
+    pub fn push_interval(&mut self, id: i32) {
+        self.intervals.push(id);
+    }
+
+    pub fn get_intervals(&self) -> Vec<i32> {
+        self.intervals
+    }
+
+    pub fn push_event(&mut self, event: &'a Function) {
+        self.events.push(event);
+    }
+
+    pub fn get_events(&self) -> Vec<&Function> {
+        self.events
     }
 }
 
@@ -89,8 +145,13 @@ fn move_player(id: usize, direction: bool) {
 fn App(cx: Scope) -> Element {
 
     let players = use_state(cx, || vec![false, true]);
-    let ball = use_ref(cx, Ball::new);
-    let listeners_added = use_state(cx, || false);
+    let ball = use_ref(cx, || Ball::new(|| {
+
+    }));
+
+    let listeners = use_ref(cx, Funcs::new);
+
+    let hidden = use_state(cx, || true);
 
     let player = |id: usize, player: bool| rsx!( div {
             id: "player{id}",
@@ -114,7 +175,7 @@ fn App(cx: Scope) -> Element {
     let window = web_sys::window().unwrap_throw();
         let players_clone = players.clone();
 
-    if !listeners_added
+    if listeners.read().len() == 0 && !hidden
     {
         {
             let closure = Closure::<dyn FnMut(_)>::new( move |e: web_sys::InputEvent| {
@@ -135,7 +196,9 @@ fn App(cx: Scope) -> Element {
                     _ => {}
                 }
             } );
-            window.add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref()).unwrap_throw();
+            let func = closure.as_ref().unchecked_ref();
+            window.add_event_listener_with_callback("keydown", func).unwrap_throw();
+            listeners.with_mut(|v| {v.push_event(func); v});
             closure.forget();
         }
         {
@@ -155,7 +218,9 @@ fn App(cx: Scope) -> Element {
                 context.close_path();
 
             });
-            window.set_interval_with_callback_and_timeout_and_arguments_0(closure.as_ref().unchecked_ref(), 1).unwrap_throw();
+            listeners.with_mut(|v| {
+                window.set_interval_with_callback_and_timeout_and_arguments_0(closure.as_ref().unchecked_ref(), 1).unwrap_throw();
+            v });
             closure.forget();
 
             let ball_clone = ball.clone();
@@ -166,10 +231,17 @@ fn App(cx: Scope) -> Element {
                 //ball_clone.with_mut(|_| ball);
                 ball_clone.set(ball)
             });
+            listeners.with_mut(|v| {
             window.set_interval_with_callback_and_timeout_and_arguments_0(closure.as_ref().unchecked_ref(), 30).unwrap_throw();
+            v });
             closure.forget();
         }
-        listeners_added.set(true);
+    } else if listeners.read().len() > 0 && hidden.get().to_owned() {
+        console_log("clear");
+        for id in listeners.read().get_intervals() {
+            window.clear_interval_with_handle(id);
+        }
+
     }
 
     cx.render(rsx! {
@@ -178,22 +250,23 @@ fn App(cx: Scope) -> Element {
         button {
             onclick: move |_| {
                 let document = web_sys::window().unwrap_throw().document().unwrap_throw();
-                document.get_element_by_id("start").unwrap_throw().set_attribute("hidden", "").unwrap_throw();
-                document.get_element_by_id("game").unwrap_throw().remove_attribute("hidden").unwrap_throw();
+                //document.get_element_by_id("start").unwrap_throw().set_attribute("hidden", "").unwrap_throw();
+                //document.get_element_by_id("game").unwrap_throw().remove_attribute("hidden").unwrap_throw();
+                hidden.set(!hidden);
             },
             "PLAY"
         }
        }
        div {
         id: "game",
-        //hidden: true,
+        hidden: hidden.get().to_owned(),
         class: "flex flex-row h-[38rem] w-[75rem]",
         player(0, players.get().get(0).unwrap_throw().to_owned()),
         canvas {
             id: "gamecanvas",
             width: "800",
             height: "600",
-            class: "w-4/6",
+            class: "w-4/6 border-2 border-black",
         },
         player(1, players.get().get(1).unwrap_throw().to_owned()),
        }
