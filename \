@@ -1,5 +1,5 @@
 #![allow(non_snake_case)]
-use std::{borrow::Borrow, isize, ops::{Deref, RangeBounds}, usize};
+use std::{borrow::Borrow, isize, ops::Deref, usize};
 
 // import the prelude to get access to the `rsx!` macro and the `Scope` and `Element` types
 use dioxus::{html::{geometry::euclid::{num::Round, Trig}, option, select, GlobalAttributes}, prelude::*};
@@ -10,100 +10,80 @@ use web_sys::js_sys::Function;
 const WIDTH: isize = 800;
 const HEIGHT: isize = 600;
 const BALL_RADIUS: isize = 15;
-const PHYSICS_SCALE: isize = 100;
 
 #[derive(Clone, Debug)]
 struct Ball {
     pub x: isize,
     pub y: isize,
-    speed: f64,
-    angle: f64,
+    offsets: f64,
     inverted: (bool, bool),
     game_over: fn (),
 }
 
-#[derive(Clone)]
-struct Paddle {
+struct Pallet {
     pub x: isize,
-    pub y: isize,
-    pub w: isize,
-    pub h: isize,
+    pub y: isize
 }
 
-impl Paddle {
-    fn new(left: bool) -> Self {
-        Self { x: if left { 50 } else {750}, y: 250, w: 30, h: 100 }
-    }
+impl Pallet {
 
-    fn collision(&self, ball: &mut Ball) {
-        if (self.x..self.x + self.w).contains(&(ball.x / PHYSICS_SCALE)) {
-            ball.invert_x();
-        }
-        if (self.y..self.y + self.h).contains(&(ball.y / PHYSICS_SCALE)) {
-            ball.invert_y();
-        }
-    }
 }
 
 impl Ball {
     fn new(game_over: fn()) -> Self {
         let mut rng = rand::thread_rng();
-        Self { x: 385 * PHYSICS_SCALE, y: 285 * PHYSICS_SCALE, speed: 6.5 * PHYSICS_SCALE as f64, angle: rng.gen_range(5.5..6.5) * PHYSICS_SCALE as f64,
+        Self { x: 3850, y: 2850, speed: 30),
             inverted: (rng.gen(), rng.gen()), game_over}
     }
 
     fn next(&mut self) {
         let mut rng = rand::thread_rng();
-        let mult_x = if self.inverted.0 {-1} else {1} as f64;
-        let mult_y = if self.inverted.1 {-1} else {1} as f64;
+        let mult_x = if self.inverted.0 {-1} else {1};
+        let mult_y = if self.inverted.1 {-1} else {1};
 
-        //let v = 15.0;
-
-        let (x, y) = (self.angle * mult_x, ((self.speed * self.speed) - (self.angle *self.angle)).sqrt() * mult_y);
+        self.x += self.offsets.0 * mult_x;
+        self.y += self.offsets.1 * mult_y;
 
         let mut invert = (false, false);
 
-        self.x += x as isize;
-        self.y += y as isize;
-
-        if self.x < BALL_RADIUS * PHYSICS_SCALE {
+        if self.x < BALL_RADIUS * 10 {
             invert.0 = true;
-            self.x = BALL_RADIUS * 2 * PHYSICS_SCALE - self.x;
+            self.x = BALL_RADIUS * 20 - self.x;
         }
 
-        if self.x > (WIDTH - BALL_RADIUS) * PHYSICS_SCALE {
+        if self.x > (WIDTH - BALL_RADIUS) * 10 {
             invert.0 = true;
-            self.x = (WIDTH - BALL_RADIUS) * PHYSICS_SCALE * 2 - self.x;
+            self.x = (WIDTH - BALL_RADIUS) * 10 * 2 - self.x;
         }
 
-        if self.y < BALL_RADIUS * PHYSICS_SCALE {
+        if self.y < BALL_RADIUS * 10 {
             invert.1 = true;
-            self.y = BALL_RADIUS * 2 * PHYSICS_SCALE - self.y;
+            self.y = BALL_RADIUS * 20 - self.y;
         }
 
-        if self.y > (HEIGHT - BALL_RADIUS) * PHYSICS_SCALE {
+        if self.y > (HEIGHT - BALL_RADIUS) * 10 {
             invert.1 = true;
-            self.y = (HEIGHT - BALL_RADIUS) * PHYSICS_SCALE * 2 - self.y;
+            self.y = (HEIGHT - BALL_RADIUS) * 10 * 2 - self.y;
         }
 
         if invert.0 {
             console_log("invert x");
             self.invert_x();
-            //self.x += x as isize;
+            self.offsets.1 += rng.gen_range(-40..40);
         }
 
         if invert.1 {
             console_log("invert y");
             self.invert_y();
-            //self.y += y as isize;
+            self.offsets.0 += rng.gen_range(-40..40);
         }
     }
 
-    pub fn invert_y(&mut self) {
+    fn invert_y(&mut self) {
         self.inverted.1 = !self.inverted.1;
     }
 
-    pub fn invert_x(&mut self) {
+    fn invert_x(&mut self) {
         self.inverted.0 = !self.inverted.0;
     }
 }
@@ -175,7 +155,6 @@ fn move_player(id: usize, direction: bool) {
 fn App(cx: Scope) -> Element {
 
     let players = use_state(cx, || vec![false, true]);
-    let paddles = use_ref(cx, || vec![Paddle::new(true), Paddle::new(false)]);
     let ball = use_ref(cx, || Ball::new(|| {
 
     }));
@@ -234,10 +213,9 @@ fn App(cx: Scope) -> Element {
         }
         {
             let ball_clone = ball.clone();
-            let paddles_clone = paddles.clone();
             let closure = Closure::<dyn FnMut()>::new(move || {
                 //console_log("call");
-                let (x, y) = ( ball_clone.read().x / PHYSICS_SCALE, ball_clone.read().y / PHYSICS_SCALE );
+                let (x, y) = ( ball_clone.read().x / 10, ball_clone.read().y / 10 );
                 let context = get_context("2d".to_string());
                 context.clear_rect(0.0, 0.0, 800.0, 600.0);
                 context.begin_path();
@@ -246,14 +224,6 @@ fn App(cx: Scope) -> Element {
                 context.arc(x as f64, y as f64, 15.0, 0.0, std::f64::consts::TAU).unwrap_throw();
                 context.fill();
                 context.stroke();
-
-                paddles_clone.with(|vec| {
-                    vec.iter().for_each(|p| {
-                        context.rect(p.x as f64, p.y as f64, p.w as f64, p.h as f64);
-                        context.stroke();
-                    });
-                });
-
                 //context.fill_rect(x as f64, y as f64, 10.0, 10.0);
                 context.close_path();
 
@@ -266,12 +236,9 @@ fn App(cx: Scope) -> Element {
             closure.forget();
 
             let ball_clone = ball.clone();
-            let paddles_clone = paddles.clone();
             let closure = Closure::<dyn FnMut()>::new(move || {
                 let mut ball = ball_clone.read().clone();
                 ball.next();
-                let paddles = paddles_clone.read().clone();
-                paddles.iter().for_each(|e| e.collision(&mut ball));
                 //console_log(format!("{:?}", ball).as_str());
                 //ball_clone.with_mut(|_| ball);
                 ball_clone.set(ball)
