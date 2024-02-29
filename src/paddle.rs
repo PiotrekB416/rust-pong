@@ -1,6 +1,6 @@
 use std::ops::{Range, RangeBounds};
 
-use crate::{console_log, consts::*, Ball};
+use crate::{console_log, consts::*, move_player, Ball};
 
 #[derive(Clone)]
 pub struct Paddle {
@@ -58,8 +58,8 @@ impl Paddle {
         }
     }
 
-    pub fn move_player(&mut self, val: isize) {
-        self.y += val;
+    pub fn move_player(&mut self, dir: bool) {
+        self.y += if dir { -1 } else { 1 };
 
         if self.y < 0 {
             self.y = 0;
@@ -67,6 +67,14 @@ impl Paddle {
 
         if self.y > HEIGHT - self.h {
             self.y = HEIGHT - self.h;
+        }
+    }
+
+    pub fn move_ai(&mut self, ball: &Ball) {
+        let range = self.y + BALL_RADIUS * 2..self.y + self.h - BALL_RADIUS * 2;
+        console_log(format!("{range:?}|{}", ball.y / PHYSICS_SCALE).as_str());
+        if !range.contains(&(ball.y / PHYSICS_SCALE)) {
+            self.move_player(ball.y / PHYSICS_SCALE < range.start);
         }
     }
 }

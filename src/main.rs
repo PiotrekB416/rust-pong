@@ -43,7 +43,7 @@ fn get_context(context_type: String) -> web_sys::CanvasRenderingContext2d {
 }
 
 fn move_player(player: &mut Paddle, direction: bool) {
-    player.move_player(if direction { -1 } else { 1 });
+    player.move_player(direction);
 }
 
 #[derive(Clone)]
@@ -214,6 +214,7 @@ fn App(cx: Scope) -> Element {
             let ball_clone = ball.clone();
             let paddles_clone = paddles.clone();
             let controller_clone = controller.clone();
+            let players_clone = players.clone();
             let closure = Closure::<dyn FnMut()>::new(move || {
                 //console_log("call");
                 let (x, y) = (
@@ -241,6 +242,14 @@ fn App(cx: Scope) -> Element {
                 controller_clone.with(|c| {
                     c.action();
                 });
+                let ball = ball_clone.read();
+                players_clone.read().iter().enumerate().filter(|(_, v)| !**v).for_each(|(i, _)| {
+                    paddles_clone.with_mut(|v| {
+                        v[i].move_ai(ball.deref());
+                    })
+                });
+
+
 
                 //context.fill_rect(x as f64, y as f64, 10.0, 10.0);
                 context.close_path();
