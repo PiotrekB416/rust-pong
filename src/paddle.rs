@@ -1,6 +1,6 @@
 use std::ops::{Range, RangeBounds};
 
-use crate::{console_log, consts::*, move_player, Ball};
+use crate::{console_log, consts::*, Ball};
 
 #[derive(Clone)]
 pub struct Paddle {
@@ -13,13 +13,13 @@ pub struct Paddle {
 impl Paddle {
     pub fn new(left: bool) -> Self {
         Self {
-            x: if left { 50 } else { 750 },
+            x: if left { 50 } else { WIDTH - 50 },
             y: 250,
             w: 30,
             h: 100,
         }
     }
-
+    // check ball collision
     pub fn collision(&self, ball: &mut Ball) {
         fn ranges_intersect(range1: Range<isize>, range2: Range<isize>) -> bool {
             range1.clone().min() <= range2.clone().max() && range2.min() <= range1.max()
@@ -55,9 +55,11 @@ impl Paddle {
             && (ball.inverted.0 == (self.x < WIDTH / 2))
         {
             ball.invert_x();
+
+            ball.random_angle();
         }
     }
-
+    // player code
     pub fn move_player(&mut self, dir: bool) {
         self.y += if dir { -1 } else { 1 };
 
@@ -69,11 +71,11 @@ impl Paddle {
             self.y = HEIGHT - self.h;
         }
     }
-
+    // bot code
     pub fn move_ai(&mut self, ball: &Ball) {
         let range = self.y + BALL_RADIUS * 2..self.y + self.h - BALL_RADIUS * 2;
-        console_log(format!("{range:?}|{}", ball.y / PHYSICS_SCALE).as_str());
-        if !range.contains(&(ball.y / PHYSICS_SCALE)) {
+        //console_log(format!("{range:?}|{}", ball.y / PHYSICS_SCALE).as_str());
+        if !range.contains(&(ball.y / PHYSICS_SCALE)) && ((self.x < WIDTH / 2) ^ !ball.inverted.0) {
             self.move_player(ball.y / PHYSICS_SCALE < range.start);
         }
     }

@@ -11,7 +11,6 @@ mod paddle;
 use paddle::Paddle;
 
 // import the prelude to get access to the `rsx!` macro and the `Scope` and `Element` types
-use dioxus::html::GlobalAttributes;
 use dioxus::prelude::*;
 use wasm_bindgen::prelude::*;
 use web_sys::js_sys::Function;
@@ -24,7 +23,7 @@ extern "C" {
 
 fn main() {
     // launch the web app
-    dioxus_web::launch(App);
+    dioxus_web::launch::launch(App, vec![], vec![]);
 }
 
 fn get_context(context_type: String) -> web_sys::CanvasRenderingContext2d {
@@ -52,11 +51,11 @@ pub struct Controller {
     pub s: bool,
     pub au: bool,
     pub ad: bool,
-    players: UseRef<Vec<Paddle>>,
+    players: Signal<Vec<Paddle>>,
 }
 
 impl Controller {
-    pub fn new(players: UseRef<Vec<Paddle>>) -> Self {
+    pub fn new(players: Signal<Vec<Paddle>>) -> Self {
         Self {
             w: false,
             s: false,
@@ -66,7 +65,7 @@ impl Controller {
         }
     }
 
-    pub fn action(&self) {
+    pub fn action(&mut self) {
         if self.w {
             self.players.with_mut(|v| {
                 move_player(&mut v[0], true);
@@ -94,24 +93,24 @@ impl Controller {
 }
 
 // create a component that renders a div with the text "Hello, world!"
-fn App(cx: Scope) -> Element {
-    let players = use_ref(cx, || vec![false, true]);
-    let points = use_state(cx, || vec![0, 0]);
-    let paddles = use_ref(cx, || vec![Paddle::new(true), Paddle::new(false)]);
-    let controller = use_ref(cx, || Controller::new(paddles.clone()));
-    let ball = use_ref(cx, || Ball::new(points.clone()));
+fn App() -> Element {
+    let players = use_signal(|| vec![false, true]);
+    let points = use_signal(|| vec![0, 0]);
+    let paddles = use_signal(|| vec![Paddle::new(true), Paddle::new(false)]);
+    let controller = use_signal(|| Controller::new(paddles.clone()));
+    let ball = use_signal(|| Ball::new(points.clone()));
 
-    let listeners = use_ref(cx, Funcs::new);
+    let mut listeners = use_signal(Funcs::new);
 
-    let hidden = use_state(cx, || true);
+    let mut hidden = use_signal(|| true);
 
     let player = |id: usize, player: bool| {
-        let players = players.clone();
+        let mut players = players.clone();
         rsx!( div {
             id: "player{id}",
             class: "w-1/6 select-none hover:select-all",
             span {
-                "player {id}: {points[id]}"
+                "player {id}: {points.read()[id]}"
             },
             select {
                 onchange: move |_: Event<_>| {
@@ -119,7 +118,7 @@ fn App(cx: Scope) -> Element {
                     //let players = players.clone();
                     players.with_mut(|players| players[id] = !players[id]);
                     //console_log("change");
-                    console_log(format!("{:?}", players.read()).as_str());
+                    //console_log(format!("{:?}", players.read()).as_str());
                 },
                 option {selected: player, "player"},
                 option {selected: !player, "bot"},
@@ -127,29 +126,32 @@ fn App(cx: Scope) -> Element {
         }, )
     };
 
-    [0, 1].iter().for_each(|n| {
-        let a = web_sys::window()
-            .unwrap_throw()
-            .document()
-            .unwrap_throw()
-            .get_element_by_id(format!("player{n}").as_str());
-        if a.is_none() {
-            return;
-        }
-        a.unwrap()
-            .add_event_listener_with_callback(
-                "keydown",
-                &Function::new_with_args("e", "e.preventDefault()"),
-            )
-            .unwrap_throw();
-    });
 
     let window = web_sys::window().unwrap_throw();
     let players_clone = players.clone();
 
-    if listeners.read().len() == 0 && !hidden {
+    // IF NOT PAUSED
+    if listeners.read().len() == 0 && !*hidden.read() {
+        // REMOVE KEY LISTENERS ON <select>
+        [0, 1].iter().for_each(|n| {
+            let a = web_sys::window()
+                .unwrap_throw()
+                .document()
+                .unwrap_throw()
+                .get_element_by_id(format!("player{n}").as_str());
+            if a.is_none() {
+                return;
+            }
+            a.unwrap()
+                .add_event_listener_with_callback(
+                    "keydown",
+                    &Function::new_with_args("e", "e.preventDefault()"),
+                    )
+                .unwrap_throw();
+        });
+        // SET KEYDOWN
         {
-            let controller_clone = controller.clone();
+            let mut controller_clone = controller.clone();
             let closure = Closure::<dyn FnMut(_)>::new(move |e: web_sys::InputEvent| {
                 let key = e
                     .deref()
@@ -157,7 +159,7 @@ fn App(cx: Scope) -> Element {
                     .dyn_into::<web_sys::KeyboardEvent>()
                     .unwrap_throw()
                     .key();
-                console_log(format!("keydown: {:?}", key.as_str()).as_str());
+                //console_log(format!("keydown: {:?}", key.as_str()).as_str());
 
                 match key.as_str() {
                     "w" => controller_clone
@@ -181,8 +183,10 @@ fn App(cx: Scope) -> Element {
             });
             closure.forget();
         }
+
+        // SET KEYUP
         {
-            let controller_clone = controller.clone();
+            let mut controller_clone = controller.clone();
             let closure = Closure::<dyn FnMut(_)>::new(move |e: web_sys::InputEvent| {
                 let key = e
                     .deref()
@@ -190,7 +194,7 @@ fn App(cx: Scope) -> Element {
                     .dyn_into::<web_sys::KeyboardEvent>()
                     .unwrap_throw()
                     .key();
-                console_log(format!("keyup: {:?}", key.as_str()).as_str());
+                //console_log(format!("keyup: {:?}", key.as_str()).as_str());
 
                 match key.as_str() {
                     "w" => controller_clone.with_mut(|c| c.w = false),
@@ -210,10 +214,13 @@ fn App(cx: Scope) -> Element {
             });
             closure.forget();
         }
+
+        // GAME
         {
-            let ball_clone = ball.clone();
-            let paddles_clone = paddles.clone();
-            let controller_clone = controller.clone();
+            // DRAW
+            let mut ball_clone = ball.clone();
+            let mut paddles_clone = paddles.clone();
+            let mut controller_clone = controller.clone();
             let players_clone = players.clone();
             let closure = Closure::<dyn FnMut()>::new(move || {
                 //console_log("call");
@@ -239,17 +246,20 @@ fn App(cx: Scope) -> Element {
                     });
                 });
 
-                controller_clone.with(|c| {
+                controller_clone.with_mut(|c| {
                     c.action();
                 });
                 let ball = ball_clone.read();
-                players_clone.read().iter().enumerate().filter(|(_, v)| !**v).for_each(|(i, _)| {
-                    paddles_clone.with_mut(|v| {
-                        v[i].move_ai(ball.deref());
-                    })
-                });
-
-
+                players_clone
+                    .read()
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, v)| !**v)
+                    .for_each(|(i, _)| {
+                        paddles_clone.with_mut(|v| {
+                            v[i].move_ai(ball.deref());
+                        })
+                    });
 
                 //context.fill_rect(x as f64, y as f64, 10.0, 10.0);
                 context.close_path();
@@ -267,8 +277,9 @@ fn App(cx: Scope) -> Element {
             });
             closure.forget();
 
-            let ball_clone = ball.clone();
-            let paddles_clone = paddles.clone();
+            // BALL NEXT
+            let mut ball_clone = ball.clone();
+            let mut paddles_clone = paddles.clone();
             let closure = Closure::<dyn FnMut()>::new(move || {
                 let mut ball = ball_clone.read().clone();
                 ball.next();
@@ -291,9 +302,10 @@ fn App(cx: Scope) -> Element {
             });
             closure.forget();
         }
-    } else if listeners.read().len() > 0 && hidden.get().to_owned() {
-        //console_log(format!("len: {}", listeners.read().len()).as_str());
-        console_log("clear");
+    } else if listeners.read().len() > 0 && hidden.read().to_owned() {
+
+        // REMOVE LISTENERS AND INTERVALS IF PAUSED
+        //console_log("clear");
         for id in listeners.read().get_intervals() {
             window.clear_interval_with_handle(id);
         }
@@ -301,36 +313,42 @@ fn App(cx: Scope) -> Element {
             window
                 .remove_event_listener_with_callback("keydown", &f)
                 .unwrap_throw();
+            window
+                .remove_event_listener_with_callback("keyup", &f)
+                .unwrap_throw();
         }
         listeners.with_mut(|v| {
             v.remove_all();
             v.clone()
         });
     }
-    cx.render(rsx! {
+    // RENDER HTML
+    rsx! {
        div {
+        class: "w-fit h-10 mx-auto",
         id: "start",
         button {
             onclick: move |_| {
                 //let document = web_sys::window().unwrap_throw().document().unwrap_throw();
                 //document.get_element_by_id("start").unwrap_throw().set_attribute("hidden", "").unwrap_throw();
                 //document.get_element_by_id("game").unwrap_throw().remove_attribute("hidden").unwrap_throw();
-                hidden.set(!hidden);
+                hidden.with_mut(|v| *v = !*v);
             },
-            if hidden.get().to_owned() { "PLAY" } else { "STOP" }
+            class: "my-auto",
+            if hidden.read().to_owned() { "PLAY" } else { "STOP" }
         }
        }
        div {
         id: "game",
-        class: if hidden.clone().get().to_owned() { "hidden" } else { "flex flex-row h-[38rem] w-[75rem]" },
-        player(0, players.read().get(0).unwrap_throw().to_owned()),
+        class: /*if hidden.clone().get().to_owned() { "hidden" } else {*/ "flex flex-row h-[38rem] w-[75rem] mx-auto" /*}*/,
+        {player(0, players.read().get(0).unwrap_throw().to_owned())},
         canvas {
             id: "gamecanvas",
             width: "{WIDTH}",
             height: "{HEIGHT}",
             class: "w-4/6 border-2 border-black",
         },
-        player(1, players.read().get(1).unwrap_throw().to_owned()),
+        {player(1, players.read().get(1).unwrap_throw().to_owned())},
        }
-    })
+    }
 }

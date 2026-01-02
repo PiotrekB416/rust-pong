@@ -1,7 +1,6 @@
-use std::ptr::null;
 
 use crate::{console_log, consts::*};
-use dioxus::hooks::UseState;
+use dioxus::prelude::{Signal, WritableExt};
 use rand::Rng;
 
 #[derive(Clone, Debug)]
@@ -9,13 +8,13 @@ pub struct Ball {
     pub x: isize,
     pub y: isize,
     speed: f64,
-    angle: f64,
+    pub(crate) angle: f64,
     pub(crate) inverted: (bool, bool),
-    score: UseState<Vec<usize>>,
+    score: Signal<Vec<usize>>,
 }
 
 impl Ball {
-    pub fn new(score: UseState<Vec<usize>>) -> Self {
+    pub fn new(score: Signal<Vec<usize>>) -> Self {
         let mut s = Self {
             x: 0,
             y: 0,
@@ -29,11 +28,8 @@ impl Ball {
     }
 
     pub fn next(&mut self) {
-        //let mut rng = rand::thread_rng();
         let mult_x = if self.inverted.0 { -1 } else { 1 } as f64;
         let mult_y = if self.inverted.1 { -1 } else { 1 } as f64;
-
-        //let v = 15.0;
 
         let (x, y) = (
             self.angle * mult_x,
@@ -66,9 +62,7 @@ impl Ball {
         }
 
         if invert.0 {
-            console_log("invert x");
-            //self.invert_x();
-            //self.x += x as isize;
+            //console_log("invert x");
             let id = if self.x > (WIDTH / 2 * PHYSICS_SCALE) {
                 0
             } else {
@@ -79,10 +73,8 @@ impl Ball {
         }
 
         if invert.1 {
-            console_log("invert y");
+            //console_log("invert y");
             self.invert_y();
-
-            //self.y += y as isize;
         }
     }
 
@@ -91,6 +83,12 @@ impl Ball {
         self.x = WIDTH / 2 * PHYSICS_SCALE;
         self.y = HEIGHT / 2 * PHYSICS_SCALE;
         self.inverted = (rng.gen(), rng.gen());
+        self.random_angle();
+    }
+
+
+    pub fn random_angle(&mut self) {
+        let mut rng = rand::thread_rng();
         self.angle = rng.gen_range(2.7..3.5) * PHYSICS_SCALE as f64;
     }
 
