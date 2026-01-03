@@ -5,3 +5,7 @@ Simple [pong](https://en.wikipedia.org/wiki/Pong) on [wasm](https://en.wikipedia
 # running
 
 `dx serve --web` (requires dioxus-cli)
+
+# images
+
+<img src="./images/game.png" alt="game" width="50%" />
